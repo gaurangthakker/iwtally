@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Railway Wagon Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<style>
+body{background:#0b0b0b;color:#fff;font-family:Segoe UI,sans-serif;margin:0;padding:15px}
+.container{max-width:1200px;margin:auto}
+.card{background:#171717;border:1px solid #333;border-radius:12px;padding:15px;margin-bottom:12px}
+input{padding:10px;border-radius:8px}
+input[type=text]{width:100%;background:#222;color:#fff;border:1px solid #444}
+.summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.scard{background:#171717;border:1px solid #333;border-radius:10px;padding:10px;text-align:center}
+.wrap{overflow:auto}
+table{width:100%;border-collapse:collapse}
+th{background:#00d4ff;color:#000}
+th,td{padding:8px;border-bottom:1px solid #333;text-align:center}
+</style>
+</head>
+<body>
+<div class="container">
+<h2>🚂 Railway Wagon Dashboard</h2>
+
+<div class="card">
+<label>Station To Code</label>
+<input id="stationCode" value="HAPA">
+<br><br>
+<input type="file" id="fileInput" accept=".csv,.xls,.xlsx">
+</div>
+
+<div id="summary" class="summary"></div>
+
+<div class="card">
+<input id="searchBox" placeholder="Search Wagon Number">
+</div>
+
+<div class="wrap">
+<table>
+<thead>
+<tr><th>WAGON RLY</th><th>WAGON TYPE</th><th>WAGON NO</th></tr>
+</thead>
+<tbody id="tbody"></tbody>
+</table>
+</div>
+</div>
+
+<script>
+// DOM Elements ko safely select karna (App compatibility ke liye)
+const fileInput = document.getElementById("fileInput");
+const stationCode = document.getElementById("stationCode");
+const searchBox = document.getElementById("searchBox");
+const tbody = document.getElementById("tbody");
+const summary = document.getElementById("summary");
+
+let allRows=[];
+let data=[];
+
+const norm=v=>String(v||"").trim().toUpperCase();
+
+function mapType(t){
+ t=norm(t);
+ if(t.startsWith("BCNHL")) return "BCNHL";
+ if(t.startsWith("BCN")){
+   if(t.length>=4 && t.charAt(3)==="A") return "BCNA";
+   return "BCN";
+ }
+ return t;
+}
+
+// Event Listeners bind karna
+if(fileInput) fileInput.addEventListener("change", processFile);
+if(stationCode) stationCode.addEventListener("input", applyFilter);
+if(searchBox) searchBox.addEventListener("input", render);
+
+function processFile(){
+ const file=fileInput.files[0];
+ if(!file) return;
+
+ const ext=file.name.split(".").pop().toLowerCase();
+
+ if(ext==="csv"){
+   const r=new FileReader();
+   r.onload=e=>{
+     let txt=e.target.result;
+     let lines=txt.split(/\r?\n/);
+     // CSV me bina quotes ke bhi WAGON RLY mil sake isliye safely check kiya
+     let idx=lines.findIndex(x=>x.includes("WAGON RLY"));
+     let csv=idx>=0 ? lines.slice(idx).join("\n") : txt;
+
+     const wb=XLSX.read(csv,{type:"string"});
+     loadWorkbook(wb);
+   };
+   r.readAsText(file);
+ }else{
+   const r=new FileReader();
+   r.onload=e=>{
+     const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});
+     loadWorkbook(wb);
+   };
+   r.readAsArrayBuffer(file);
+ }
+}
+
+function loadWorkbook(wb){
+ allRows=XLSX.utils.sheet_to_json(
+   wb.Sheets[wb.SheetNames[0]],
+   {defval:""}
+ );
+ applyFilter();
+}
+
+function applyFilter(){
+ const station=norm(stationCode.value);
+
+ data=allRows
+ .filter(r=>
+   norm(r["STTN TO"])===station &&
+   norm(r["L. E."])==="L"
+ )
+ .map(r=>({
+   wagonRly:r["WAGON RLY"]||"",
+   wagonType:mapType(r["WAGON TYPE"]),
+   wagonNo:r["WAGON NO"]||""
+ }));
+
+ render();
+}
+
+function render(){
+ const q=norm(searchBox.value);
+
+ const rows=data.filter(r=>
+   !q || norm(r.wagonNo).includes(q)
+ );
+
+ tbody.innerHTML=rows.map(r=>
+ `<tr>
+   <td>${r.wagonRly}</td>
+   <td>${r.wagonType}</td>
+   <td>${r.wagonNo}</td>
+ </tr>`).join("");
+
+ let counts={};
+
+ rows.forEach(r=>{
+   counts[r.wagonType]=(counts[r.wagonType]||0)+1;
+ });
+
+ summary.innerHTML=Object.entries(counts)
+ .sort((a,b)=>b[1]-a[1])
+ .map(([t,c])=>
+ `<div class="scard"><div>${t}</div><h3>${c}</h3></div>`
+ ).join("")
+ +
+ `<div class="scard"><div>TOTAL</div><h3>${rows.length}</h3></div>`;
+}
+</script>
+</body>
+</html>
